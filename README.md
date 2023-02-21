@@ -1,2 +1,2 @@
 # ExploringCASegregation
- bruh
+Should have made this public earlier oops
