@@ -1,6 +1,5 @@
-
-
 import pandas as pd
+
 # This is a Public School based table with the following filters applied: State(s) (All Years): All 50 + DC
 # Data Source: U.S. Department of Education National Center for Education Statistics Common Core of Data (CCD) "Public Elementary/Secondary School Universe Survey" 2021-22 v.1a.
 SCH_LVL = 'School Level (SY 2017-18 onward) [Public School] 2021-22'
@@ -13,8 +12,10 @@ BLK = 'Black or African American Students [Public School] 2021-22'
 TOTAL = 'Total Race/Ethnicity [Public School] 2021-22'
 STATE = 'State Name [Public School] Latest available year'
 
-size = 'small'
-type = 'hispanic_v_non'
+type_options = ['white_v_hispanic', 'asian_v_hispanic', 'hispanic_v_non', 'asian_v_non',
+                'white_v_non']
+
+size_options = ['small', 'medium', 'large']
 
 
 # All schools w/ more than 1 school
@@ -31,26 +32,35 @@ type = 'hispanic_v_non'
 # † indicates that the data are not applicable.
 # – indicates that the data are missing.
 # ‡ indicates that the data do not meet NCES data quality standards.
-def get_high_schools_districts():
+def get_high_schools_districts(type):
     df = pd.read_csv('data/us.csv')
     df = df[df[SCH_LVL] == 'High']
     nulls = ['†', '–', '‡']
     df = df[~df[AGC_ID].isin(nulls)]
-    df = df[~df[HSPC].isin(nulls)]
     df = df[~df[TOTAL].isin(nulls)]
-    df[HSPC] = df[HSPC].astype(int)
+
     df[TOTAL] = df[TOTAL].astype(int)
+
+    if 'hispanic' in type:
+        df = df[~df[HSPC].isin(nulls)]
+        df[HSPC] = df[HSPC].astype(int)
+
+    if 'asian' in type:
+        df = df[~df[ASIAN].isin(nulls)]
+        df[ASIAN] = df[ASIAN].astype(int)
+
+    if 'black' in type:
+        df = df[~df[BLK].isin(nulls)]
+        df[BLK] = df[BLK].astype(int)
+
+    if 'white' in type:
+        df = df[~df[WHITE].isin(nulls)]
+        df[WHITE] = df[WHITE].astype(int)
+
     return df.groupby(AGC_ID)
 
-    # df = df[~df[BLK].isin(nulls)]
-    # df = df[~df[WHITE].isin(nulls)]
-    # df = df[~df[ASIAN].isin(nulls)]
-    # df[BLK] = df[BLK].astype(int)
-    # df[WHITE] = df[WHITE].astype(int)
-    # df[ASIAN] = df[ASIAN].astype(int)
 
-
-def get_dissimilarity(df):
+def get_dissimilarity(df, type):
     group_a = 0
     if type == 'brown_v_non':
         group_a = df[BLK].sum() + df[HSPC].sum()
@@ -92,8 +102,8 @@ def get_dissimilarity(df):
     return dis / 2
 
 
-def rank_schools():
-    districts = get_high_schools_districts()
+def rank_schools(size, type):
+    districts = get_high_schools_districts(type)
     district_segs = {'District Name': [], 'nces_id': [], 'Dissimilarity': [], 'State': [], 'Size': []}
     for district, df in districts:
         # must have more than 1 schools
@@ -108,7 +118,7 @@ def rank_schools():
             min_size = 10000
         if df[TOTAL].sum() < min_size:
             continue
-        dis = get_dissimilarity(df)
+        dis = get_dissimilarity(df, type)
         if dis == -1:
             continue
         district_segs['Dissimilarity'].append(dis)
@@ -118,10 +128,12 @@ def rank_schools():
         district_segs['Size'].append(df[TOTAL].sum())
 
     district_output_df = pd.DataFrame(district_segs)
-    district_output_df.sort_values(by=['Dissimilarity'], ascending=False,  inplace=True)
-    district_output_df.to_csv(f'data/district_seg_{type}_us_{size}.csv')
+    district_output_df.sort_values(by=['Dissimilarity'], ascending=False).reset_index(inplace=True)
+    district_output_df.to_csv(f'outputs/district_seg_{type}_us_{size}.csv', index=False)
     district_output_df[district_output_df['State'] == 'California'].to_csv(f'data/district_seg_{type}_ca_{size}.csv')
-    # return di
+
+    print(
+        f'Ranking of FUHSD: {district_output_df.index[district_output_df["District Name"] == "Fremont Union High"].tolist()[0]}')
 
 
 def print_district(name, index, districts):
@@ -131,28 +143,26 @@ def print_district(name, index, districts):
         print(f'{name} does not satisfy criteria or does not exist')
 
 
-
 def main():
-    rank_schools()
-    # json.dump(ranking, open(f'data/district_seg_{type}_us_{size}.json', 'w'))
-    # districts = list(ranking.keys())
-    # print_district('FUHSD', 614430, districts)
-    # print_district('Palo Alto Unified', 629610, districts)
-    # print_district('Los Gatos-Saratoga Union High', 622800, districts)
-    # print_district('San Francisco Unified', 634410, districts)
-    # print_district('Mountain View-Los Altos', 626310, districts)
-    # print_district('Fremont Unified', 614400, districts)
-    # print_district('Los Angeles Unified', 622710, districts)
-    # print_district('Little Rock School District', 509000, districts)
-    # print_district('Charlotte-Mecklenburg Schools','3702970', districts)
-    # print_district('New York City Geographic Ditrict # 2', 3600077, districts)
-    # print_district('Detroit Public Schools Community District', 2601103, districts)
-    # print_district('Anaheim Union High', 602630, districts)
-    #
-    # print_district('New York City Geographic Ditrict # 20', 3600151, districts)
-    # print_district('New York City Geographic Ditrict # 27', 3600123, districts)
-    # print_district('New York City Geographic Ditrict # 22', 3600153, districts)
-    # print_district('New York City Geographic Ditrict # 1', 3600076, districts)
+    type = None
+    size = None
+    while type == None:
+        print('What type of segregation would you like to compute?')
+        print(type_options)
+        x = input('Selection: ')
+        if x in type_options:
+            type = x
+        else:
+            print('Please enter a valid selection from the list of options')
+    while size == None:
+        print('What size of high schools would you like to filter by')
+        print(size_options)
+        x = input('Selection: ')
+        if x in size_options:
+            size = x
+        else:
+            print('Please enter a valid selection from the list of options')
+    rank_schools(size, type)
 
 
 main()
